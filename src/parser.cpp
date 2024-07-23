@@ -326,15 +326,51 @@ static std::shared_ptr<FunctionType> consume_block_type(Module const &m, std::sp
 }
 
 static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
-  Instr instr{static_cast<InstrCode>(consume_byte(binary))};
+  uint16_t code = static_cast<uint16_t>(consume_byte(binary));
+  if (code == SATURATING_TRUNCATION_PREFIX) {
+    uint32_t const postfix = consume_leb128<uint32_t>(binary);
+    code = (code << 8U) + postfix;
+  }
+  Instr instr{static_cast<InstrCode>(code)};
   switch (instr.get_code()) {
+  case InstrCode::UNREACHABLE:
+  case InstrCode::NOP:
+    break;
   case InstrCode::BLOCK:
   case InstrCode::LOOP:
   case InstrCode::IF:
     instr.set_function_type(consume_block_type(m, binary));
     break;
+  case InstrCode::ELSE:
+  case InstrCode::END:
+    break;
   case InstrCode::BR:
   case InstrCode::BR_IF:
+    instr.set_index(consume_leb128<uint32_t>(binary));
+    break;
+  case InstrCode::BR_TABLE: {
+    uint8_t const n = consume_leb128<uint32_t>(binary);
+    for (size_t i : Range{n}) {
+      uint32_t const label_index = consume_leb128<uint32_t>(binary);
+    }
+    uint32_t const label_index = consume_leb128<uint32_t>(binary);
+    break;
+  }
+  case InstrCode::RETURN:
+    break;
+  case InstrCode::CALL:
+    instr.set_index(consume_leb128<uint32_t>(binary));
+    break;
+  case InstrCode::CALL_INDIRECT: {
+    uint32_t const type_index = consume_leb128<uint32_t>(binary);
+    uint32_t const table_index = consume_leb128<uint32_t>(binary);
+    instr.set_function_type(m.m_function_types.at(type_index));
+    break;
+  }
+  case InstrCode::DROP:
+  case InstrCode::SELECT:
+    break;
+
   case InstrCode::LOCAL_GET:
   case InstrCode::LOCAL_SET:
   case InstrCode::LOCAL_TEE:
@@ -342,6 +378,40 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
   case InstrCode::GLOBAL_SET:
     instr.set_index(consume_leb128<uint32_t>(binary));
     break;
+
+  case InstrCode::I32_LOAD:
+  case InstrCode::I64_LOAD:
+  case InstrCode::F32_LOAD:
+  case InstrCode::F64_LOAD:
+  case InstrCode::I32_LOAD8_S:
+  case InstrCode::I32_LOAD8_U:
+  case InstrCode::I32_LOAD16_S:
+  case InstrCode::I32_LOAD16_U:
+  case InstrCode::I64_LOAD8_S:
+  case InstrCode::I64_LOAD8_U:
+  case InstrCode::I64_LOAD16_S:
+  case InstrCode::I64_LOAD16_U:
+  case InstrCode::I64_LOAD32_S:
+  case InstrCode::I64_LOAD32_U:
+  case InstrCode::I32_STORE:
+  case InstrCode::I64_STORE:
+  case InstrCode::F32_STORE:
+  case InstrCode::F64_STORE:
+  case InstrCode::I32_STORE8:
+  case InstrCode::I32_STORE16:
+  case InstrCode::I64_STORE8:
+  case InstrCode::I64_STORE16:
+  case InstrCode::I64_STORE32: {
+    uint32_t const align = consume_leb128<uint32_t>(binary);
+    uint32_t const offset = consume_leb128<uint32_t>(binary);
+    instr.set_memarg(align, offset);
+  }
+  case InstrCode::MEMORY_SIZE:
+  case InstrCode::MEMORY_GROW:
+    if (0x00 != consume_byte(binary))
+      throw std::runtime_error("invliad memory instruction");
+    break;
+
   case InstrCode::I32CONST:
     instr.set_value(consume_leb128<int32_t>(binary));
     break;
@@ -362,43 +432,7 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
     instr.set_value(std::bit_cast<double>(v));
     break;
   }
-  case InstrCode::UNREACHABLE:
-  case InstrCode::NOP:
-  case InstrCode::ELSE:
-  case InstrCode::END:
-  case InstrCode::BR_TABLE:
-  case InstrCode::RETURN:
-  case InstrCode::CALL:
-  case InstrCode::CALL_INDIRECT:
-  case InstrCode::RETURN_CALL:
-  case InstrCode::RETURN_CALL_INDIRECT:
-  case InstrCode::DROP:
-  case InstrCode::SELECT:
-  case InstrCode::I32LOAD:
-  case InstrCode::I64LOAD:
-  case InstrCode::F32LOAD:
-  case InstrCode::F64LOAD:
-  case InstrCode::I32LOAD8_S:
-  case InstrCode::I32LOAD8_U:
-  case InstrCode::I32LOAD16_S:
-  case InstrCode::I32LOAD16_U:
-  case InstrCode::I64LOAD8_S:
-  case InstrCode::I64LOAD8_U:
-  case InstrCode::I64LOAD16_S:
-  case InstrCode::I64LOAD16_U:
-  case InstrCode::I64LOAD32_S:
-  case InstrCode::I64LOAD32_U:
-  case InstrCode::I32STORE:
-  case InstrCode::I64STORE:
-  case InstrCode::F32STORE:
-  case InstrCode::F64STORE:
-  case InstrCode::I32STORE8:
-  case InstrCode::I32STORE16:
-  case InstrCode::I64STORE8:
-  case InstrCode::I64STORE16:
-  case InstrCode::I64STORE32:
-  case InstrCode::MEMORY_SIZE:
-  case InstrCode::MEMORY_GROW:
+
   case InstrCode::I32EQZ:
   case InstrCode::I32EQ:
   case InstrCode::I32NE:
@@ -527,9 +561,15 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
   case InstrCode::I64EXTEND8_S:
   case InstrCode::I64EXTEND16_S:
   case InstrCode::I64EXTEND32_S:
+  case InstrCode::I32_TRUNC_SAT_F32_S:
+  case InstrCode::I32_TRUNC_SAT_F32_U:
+  case InstrCode::I32_TRUNC_SAT_F64_S:
+  case InstrCode::I32_TRUNC_SAT_F64_U:
+  case InstrCode::I64_TRUNC_SAT_F32_S:
+  case InstrCode::I64_TRUNC_SAT_F32_U:
+  case InstrCode::I64_TRUNC_SAT_F64_S:
+  case InstrCode::I64_TRUNC_SAT_F64_U:
     break;
-  default:
-    throw std::runtime_error("unknown instruction code " + std::to_string(static_cast<uint32_t>(instr.get_code())));
   }
   std::cout << (int)instr.get_code() << "\n";
   return instr;
