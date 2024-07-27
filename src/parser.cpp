@@ -404,7 +404,7 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
   case InstrCode::I64_STORE32: {
     uint32_t const align = consume_leb128<uint32_t>(binary);
     uint32_t const offset = consume_leb128<uint32_t>(binary);
-    instr.set_memarg(align, offset);
+    instr.set_mem_arg(align, offset);
   }
   case InstrCode::MEMORY_SIZE:
   case InstrCode::MEMORY_GROW:
@@ -570,8 +570,10 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
   case InstrCode::I64_TRUNC_SAT_F64_S:
   case InstrCode::I64_TRUNC_SAT_F64_U:
     break;
+  default:
+    throw std::runtime_error("unknown instruction");
   }
-  std::cout << (int)instr.get_code() << "\n";
+  std::cout << instr << "\n";
   return instr;
 }
 
@@ -584,11 +586,11 @@ static void consume_code(Module const &m, std::span<const uint8_t> binary) {
     for (size_t _ : Range{count})
       locals.push_back(type);
   }
-  std::vector<Instr> instrs{};
+  std::vector<Instr> instr{};
   while (binary.size() > 0)
-    instrs.push_back(consume_instr(m, binary));
+    instr.push_back(consume_instr(m, binary));
 
-  if (instrs.empty() || instrs.back().get_code() != InstrCode::END)
+  if (instr.empty() || instr.back().get_code() != InstrCode::END)
     throw std::runtime_error("code does not end with OP::END");
 }
 

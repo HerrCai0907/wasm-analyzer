@@ -1,6 +1,7 @@
 #pragma once
 
 #include "adt.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <ostream>
@@ -258,6 +259,8 @@ enum class InstrCode : uint16_t {
   I64_TRUNC_SAT_F64_U = (SATURATING_TRUNCATION_PREFIX << 8) + 7,
 };
 
+std::ostream &operator<<(std::ostream &os, InstrCode code);
+
 class FunctionType;
 
 struct Index {
@@ -269,21 +272,25 @@ struct MemArg {
   uint32_t m_offset;
 };
 
+struct None {};
+
 class Instr {
   InstrCode m_code;
-  std::variant<std::shared_ptr<FunctionType>, Index, int32_t, int64_t, float, double, MemArg> m_content;
+  std::variant<std::nullptr_t, std::shared_ptr<FunctionType>, Index, int32_t, int64_t, float, double, MemArg> m_content;
 
 public:
-  Instr(InstrCode code) : m_code(code) {}
+  Instr(InstrCode code) : m_code(code), m_content(nullptr) {}
   void set_function_type(std::shared_ptr<FunctionType> const &function_type) { m_content = function_type; }
   void set_index(uint32_t index) { m_content = Index{.m_v = index}; }
   void set_value(int32_t v) { m_content = v; }
   void set_value(int64_t v) { m_content = v; }
   void set_value(float v) { m_content = v; }
   void set_value(double v) { m_content = v; }
-  void set_memarg(uint32_t align, uint32_t offset) { m_content = MemArg{.m_align = align, .m_offset = offset}; }
+  void set_mem_arg(uint32_t align, uint32_t offset) { m_content = MemArg{.m_align = align, .m_offset = offset}; }
 
   InstrCode get_code() const { return m_code; }
+
+  friend std::ostream &operator<<(std::ostream &os, Instr const &instr);
 };
 
 class FunctionType {
