@@ -573,11 +573,10 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
   default:
     throw std::runtime_error("unknown instruction");
   }
-  std::cout << instr << "\n";
   return instr;
 }
 
-static void consume_code(Module const &m, std::span<const uint8_t> binary) {
+static std::vector<Instr> consume_code(Module const &m, std::span<const uint8_t> binary) {
   size_t const local_size = static_cast<size_t>(consume_leb128<uint32_t>(binary));
   std::vector<WasmType> locals{};
   for (size_t i : Range{local_size}) {
@@ -592,6 +591,8 @@ static void consume_code(Module const &m, std::span<const uint8_t> binary) {
 
   if (instr.empty() || instr.back().get_code() != InstrCode::END)
     throw std::runtime_error("code does not end with OP::END");
+
+  return instr;
 }
 
 static void parse_code_section(Module &m, std::span<const uint8_t> binary) {
@@ -605,7 +606,7 @@ static void parse_code_section(Module &m, std::span<const uint8_t> binary) {
     uint32_t const size = consume_leb128<uint32_t>(binary);
     std::span<const uint8_t> code_binary = binary.subspan(0, size);
 
-    consume_code(m, code_binary);
+    m.m_functions[importFuncNumber + i]->set_instr(consume_code(m, code_binary));
 
     binary = binary.subspan(size);
   }

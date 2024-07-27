@@ -2,6 +2,7 @@
 #include "analyzer.hpp"
 #include "parser.hpp"
 #include <iostream>
+#include <memory>
 
 using namespace wa;
 
@@ -10,7 +11,11 @@ int main(int argc, char const *argv[]) {
     std::cerr << "invalid arguments\n";
   }
   Parser parser{argv[1]};
-  Analyzer analyzer{parser.parse()};
+  AnalyzerManager analyzer{parser.parse()};
+  auto context = std::make_shared<AnalyzerContext>();
+
+  analyzer.registerAnalyzer(createPrinterAnalyzer(context));
+  analyzer.registerAnalyzer(createCfgBuilderAnalyzer(context));
 
   analyzer.analyze();
 }

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <optional>
 #include <ostream>
+#include <span>
 #include <string_view>
 #include <unordered_map>
 #include <variant>
@@ -289,6 +290,7 @@ public:
   void set_mem_arg(uint32_t align, uint32_t offset) { m_content = MemArg{.m_align = align, .m_offset = offset}; }
 
   InstrCode get_code() const { return m_code; }
+  uint32_t get_index() const { return std::get<Index>(m_content).m_v; }
 
   friend std::ostream &operator<<(std::ostream &os, Instr const &instr);
 };
@@ -324,14 +326,18 @@ class Function {
   std::shared_ptr<FunctionType> m_type = nullptr;
   bool m_is_import = false;
   bool m_is_export = false;
+  std::vector<Instr> m_instr{};
 
 public:
   void set_type(std::shared_ptr<FunctionType> const &type) { m_type = type; }
   void set_is_import() { m_is_import = true; }
   void set_is_export() { m_is_export = true; }
+  void set_instr(std::vector<Instr> instr) { m_instr = std::move(instr); }
 
   bool is_import() const { return m_is_import; }
   bool is_export() const { return m_is_export; }
+  FunctionType const *get_type() const { return m_type.get(); }
+  std::span<Instr> get_instr() { return {m_instr.begin(), m_instr.size()}; }
 };
 
 struct Module {
