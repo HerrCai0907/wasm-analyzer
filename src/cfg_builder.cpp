@@ -23,9 +23,7 @@ struct BasicBlock {
 
 struct Cfg {
   std::map<size_t, BasicBlock> m_blocks{};
-  std::map<Instr const *, std::set<size_t>> m_br_targets{};
-  static void dump(std::map<size_t, BasicBlock> const &blocks,
-                   std::map<Instr const *, std::set<size_t>> const &br_targets) {
+  static void dump(std::map<size_t, BasicBlock> const &blocks) {
     std::cout << "Function CFG" << "\n";
     for (auto const &[block_index, block] : blocks) {
       std::cout << "  BB[" << block_index << "] -> ";
@@ -33,17 +31,11 @@ struct Cfg {
         std::cout << "BB[" << target << "] ";
       std::cout << "\n";
       for (Instr *instr : block.m_instr) {
-        std::cout << "    " << *instr;
-        if (br_targets.contains(instr)) {
-          std::cout << " targets: ";
-          for (auto const &target : br_targets.at(instr))
-            std::cout << "BB[" << target << "] ";
-        }
-        std::cout << "\n";
+        std::cout << "    " << *instr << "\n";
       }
     }
   }
-  void dump() const { dump(m_blocks, m_br_targets); }
+  void dump() const { dump(m_blocks); }
 };
 
 class CfgBuilder : public IAnalyzer {
@@ -91,7 +83,6 @@ class CfgBuilderImpl {
   std::shared_ptr<Function> m_fn;
   size_t m_blocks_index_counter = std::max(EnterBlockIndex, ExitBlockIndex);
   std::map<size_t, BasicBlock> m_blocks{};
-  std::map<Instr const *, std::set<size_t>> m_br_targets_map{};
   size_t m_current_block_index = 0U;
   std::vector<std::unique_ptr<IWasmBlock>> m_wasm_block_stack{};
 
@@ -101,7 +92,7 @@ public:
   Cfg get() {
     build();
     simplify();
-    return {.m_blocks = std::move(m_blocks), .m_br_targets = std::move(m_br_targets_map)};
+    return {.m_blocks = std::move(m_blocks)};
   }
 
 private:
@@ -154,7 +145,6 @@ void CfgBuilderImpl::build() {
       m_blocks[m_current_block_index].m_target.insert(else_block_index);
       m_blocks[then_block_index].m_target.insert(next_block_index);
       m_blocks[else_block_index].m_target.insert(next_block_index);
-      m_br_targets_map.insert_or_assign(&instr, std::set<size_t>{then_block_index, else_block_index});
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = then_block_index;
@@ -185,7 +175,6 @@ void CfgBuilderImpl::build() {
       size_t const this_block_index = append_block();
       size_t const target_block_index = m_wasm_block_stack.front()->get_end_target_block_index();
       m_blocks[m_current_block_index].m_target.insert(target_block_index);
-      m_br_targets_map.insert_or_assign(&instr, std::set<size_t>{target_block_index});
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = this_block_index;
@@ -196,7 +185,6 @@ void CfgBuilderImpl::build() {
       size_t const target_block_index =
           m_wasm_block_stack.at(m_wasm_block_stack.size() - 1 - instr.get_index())->get_br_target_block_index();
       m_blocks[m_current_block_index].m_target.insert(target_block_index);
-      m_br_targets_map.insert_or_assign(&instr, std::set<size_t>{target_block_index});
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = next_block_index;
@@ -208,7 +196,6 @@ void CfgBuilderImpl::build() {
           m_wasm_block_stack.at(m_wasm_block_stack.size() - 1 - instr.get_index())->get_br_target_block_index();
       m_blocks[m_current_block_index].m_target.insert(next_block_index);
       m_blocks[m_current_block_index].m_target.insert(target_block_index);
-      m_br_targets_map.insert_or_assign(&instr, std::set<size_t>{next_block_index, target_block_index});
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = next_block_index;
@@ -242,9 +229,6 @@ bool CfgBuilderImpl::clean_block_no_instr_one_target() {
   for (auto &[_, block] : m_blocks) {
     block.m_target = block.m_target | replacer | std::ranges::to<std::set>();
   }
-  for (auto &[_, targets_map] : m_br_targets_map) {
-    targets_map = targets_map | replacer | std::ranges::to<std::set>();
-  }
   for (auto &[replaced_block_index, _] : replaced_target_blocks) {
     m_blocks.erase(replaced_block_index);
   }
@@ -256,7 +240,7 @@ void CfgBuilderImpl::simplify() {
   size_t cnt = 0;
   while (isChanged) {
     std::cout << "=============== simplify " << cnt++ << " ===============\n";
-    Cfg::dump(m_blocks, m_br_targets_map);
+    Cfg::dump(m_blocks);
     isChanged = clean_block_no_instr_one_target();
   }
   std::cout << "============= simplify finish =============\n";
