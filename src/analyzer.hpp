@@ -23,7 +23,7 @@ protected:
 };
 
 #define ANALYZER(name) std::shared_ptr<IAnalyzer> create##name##Analyzer(std::shared_ptr<AnalyzerContext> context);
-#include "analyzer_name.ins"
+#include "analyzer_name.inc"
 #undef ANALYZER
 
 class AnalyzerManager {

@@ -59,12 +59,12 @@ public:
   virtual ~IWasmBlock() = default;
 };
 class WasmIfBlock : public IWasmBlock {
-  size_t m_else_block_index;
+  size_t m_last_block_index;
 
 public:
-  explicit WasmIfBlock(size_t else_block_index, size_t next_block_index)
-      : IWasmBlock(next_block_index, next_block_index), m_else_block_index(else_block_index) {}
-  size_t get_else_block_index() const { return m_else_block_index; }
+  explicit WasmIfBlock(size_t last_block_index, size_t next_block_index)
+      : IWasmBlock(next_block_index, next_block_index), m_last_block_index(last_block_index) {}
+  size_t get_last_block_index() const { return m_last_block_index; }
 };
 class WasmFuncBlock : public IWasmBlock {
 public:
@@ -119,7 +119,6 @@ void CfgBuilderImpl::build() {
       size_t const this_block_index = append_block();
       size_t const next_block_index = append_block();
       m_blocks[m_current_block_index].m_target.insert(this_block_index);
-      m_blocks[this_block_index].m_target.insert(next_block_index);
 
       m_current_block_index = this_block_index;
       push_instr(this_block_index, &instr);
@@ -130,7 +129,6 @@ void CfgBuilderImpl::build() {
       size_t const this_block_index = append_block();
       size_t const next_block_index = append_block();
       m_blocks[m_current_block_index].m_target.insert(this_block_index);
-      m_blocks[this_block_index].m_target.insert(next_block_index);
 
       push_instr(this_block_index, &instr);
       m_current_block_index = this_block_index;
@@ -138,23 +136,24 @@ void CfgBuilderImpl::build() {
       break;
     }
     case InstrCode::IF: {
+      size_t const last_block_index = m_current_block_index;
       size_t const then_block_index = append_block();
-      size_t const else_block_index = append_block();
       size_t const next_block_index = append_block();
       m_blocks[m_current_block_index].m_target.insert(then_block_index);
-      m_blocks[m_current_block_index].m_target.insert(else_block_index);
-      m_blocks[then_block_index].m_target.insert(next_block_index);
-      m_blocks[else_block_index].m_target.insert(next_block_index);
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = then_block_index;
-      m_wasm_block_stack.push_back(std::make_unique<WasmIfBlock>(else_block_index, next_block_index));
+      m_wasm_block_stack.push_back(std::make_unique<WasmIfBlock>(last_block_index, next_block_index));
       break;
     }
     case InstrCode::ELSE: {
       WasmIfBlock *if_block = dynamic_cast<WasmIfBlock *>(m_wasm_block_stack.back().get());
       assert(if_block != nullptr);
-      size_t const else_block_index = if_block->get_else_block_index();
+      size_t const else_block_index = append_block();
+      size_t const last_block_index = if_block->get_last_block_index();
+      size_t const next_block_index = if_block->get_end_target_block_index();
+      m_blocks[m_current_block_index].m_target.insert(next_block_index); // then to next
+      m_blocks[last_block_index].m_target.insert(else_block_index);      // last to else
 
       push_instr(else_block_index, &instr);
       m_current_block_index = else_block_index;
@@ -164,6 +163,11 @@ void CfgBuilderImpl::build() {
       assert(!m_wasm_block_stack.empty());
       size_t const target_block_index = m_wasm_block_stack.back()->get_end_target_block_index();
       m_blocks[m_current_block_index].m_target.insert(target_block_index);
+      WasmIfBlock *if_block = dynamic_cast<WasmIfBlock *>(m_wasm_block_stack.back().get());
+      if (if_block != nullptr) {
+        size_t const last_block_index = if_block->get_last_block_index();
+        m_blocks[last_block_index].m_target.insert(target_block_index); // last to next
+      }
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = target_block_index;
