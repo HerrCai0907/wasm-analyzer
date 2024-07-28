@@ -121,7 +121,6 @@ void CfgBuilderImpl::build() {
       m_blocks[m_current_block_index].m_target.insert(this_block_index);
 
       m_current_block_index = this_block_index;
-      push_instr(this_block_index, &instr);
       m_wasm_block_stack.push_back(std::make_unique<WasmBlockBlock>(next_block_index));
       break;
     }
@@ -130,7 +129,6 @@ void CfgBuilderImpl::build() {
       size_t const next_block_index = append_block();
       m_blocks[m_current_block_index].m_target.insert(this_block_index);
 
-      push_instr(this_block_index, &instr);
       m_current_block_index = this_block_index;
       m_wasm_block_stack.push_back(std::make_unique<WasmLoopBlock>(m_current_block_index, next_block_index));
       break;
@@ -155,7 +153,6 @@ void CfgBuilderImpl::build() {
       m_blocks[m_current_block_index].m_target.insert(next_block_index); // then to next
       m_blocks[last_block_index].m_target.insert(else_block_index);      // last to else
 
-      push_instr(else_block_index, &instr);
       m_current_block_index = else_block_index;
       break;
     }
@@ -169,7 +166,6 @@ void CfgBuilderImpl::build() {
         m_blocks[last_block_index].m_target.insert(target_block_index); // last to next
       }
 
-      push_instr(m_current_block_index, &instr);
       m_current_block_index = target_block_index;
       m_wasm_block_stack.pop_back();
       break;
@@ -217,24 +213,29 @@ void CfgBuilderImpl::build() {
   assert(m_wasm_block_stack.empty());
 }
 bool CfgBuilderImpl::clean_block_no_instr_one_target() {
-  std::map<size_t, size_t> replaced_target_blocks{};
+  std::map<size_t, size_t> replaced_blocks{};
   for (auto &[block_index, block] : m_blocks) {
     if (block.m_instr.empty() && block.m_target.size() == 1) {
-      replaced_target_blocks.insert_or_assign(block_index, *block.m_target.begin());
+      replaced_blocks.insert_or_assign(block_index, *block.m_target.begin());
     }
   }
-  bool const isChanged = !replaced_target_blocks.empty();
-  auto const replacer = std::views::transform([&replaced_target_blocks](size_t target_block_index) -> size_t {
-    if (replaced_target_blocks.contains(target_block_index)) {
-      return replaced_target_blocks[target_block_index];
+  bool const isChanged = !replaced_blocks.empty();
+  for (auto &[old_block, new_block] : replaced_blocks) {
+    while (replaced_blocks.contains(new_block)) {
+      new_block = replaced_blocks[new_block];
+    }
+  }
+  auto const replacer = std::views::transform([&replaced_blocks](size_t target_block_index) -> size_t {
+    if (replaced_blocks.contains(target_block_index)) {
+      return replaced_blocks[target_block_index];
     }
     return target_block_index;
   });
   for (auto &[_, block] : m_blocks) {
     block.m_target = block.m_target | replacer | std::ranges::to<std::set>();
   }
-  for (auto &[replaced_block_index, _] : replaced_target_blocks) {
-    m_blocks.erase(replaced_block_index);
+  for (auto &[old_block, _] : replaced_blocks) {
+    m_blocks.erase(old_block);
   }
   return isChanged;
 }
