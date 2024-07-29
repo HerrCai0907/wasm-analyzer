@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <fstream>
 #include <ios>
 #include <iostream>
@@ -261,6 +262,7 @@ static void parse_import_section(Module &m, std::span<const uint8_t> binary) {
       uint32_t const type_index = consume_leb128<uint32_t>(binary);
       m.m_functions.push_back(std::make_shared<Function>());
       m.m_functions.back()->set_type(m.m_function_types.at(type_index));
+      m.m_functions.back()->set_is_import();
       break;
     }
     case 1: {
@@ -601,7 +603,8 @@ static void parse_code_section(Module &m, std::span<const uint8_t> binary) {
       std::count_if(m.m_functions.begin(), m.m_functions.end(),
                     [](std::shared_ptr<Function> const &func) { return func->is_import(); });
   if (importFuncNumber + n != m.m_functions.size())
-    throw std::runtime_error("not matched code count");
+    throw std::runtime_error(std::format("not matched code count, importFuncNumber={}, n={}, m_functions.size={}",
+                                         importFuncNumber, n, m.m_functions.size()));
   for (size_t i : Range{n}) {
     uint32_t const size = consume_leb128<uint32_t>(binary);
     std::span<const uint8_t> code_binary = binary.subspan(0, size);
