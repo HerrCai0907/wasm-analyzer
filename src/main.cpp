@@ -11,11 +11,12 @@ int main(int argc, char const *argv[]) {
     std::cerr << "invalid arguments\n";
   }
   Parser parser{argv[1]};
-  AnalyzerManager analyzer{parser.parse()};
-  auto context = std::make_shared<AnalyzerContext>();
+  AnalyzerManager analyzer_manager{parser.parse()};
+  std::shared_ptr<AnalyzerContext> context{new AnalyzerContext(analyzer_manager)};
 
-  analyzer.registerAnalyzer(createPrinterAnalyzer(context));
-  analyzer.registerAnalyzer(createCfgBuilderAnalyzer(context));
+  analyzer_manager.register_analyzer(createPrinterAnalyzer(context));
+  analyzer_manager.register_analyzer(createCfgBuilderAnalyzer(context));
+  analyzer_manager.register_analyzer(createExtendCfgBuilderAnalyzer(context));
 
-  analyzer.analyze();
+  analyzer_manager.analyze();
 }

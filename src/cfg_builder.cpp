@@ -1,4 +1,6 @@
+#include "cfg_builder.hpp"
 #include "analyzer.hpp"
+#include "cfg.hpp"
 #include "error.hpp"
 #include "module.hpp"
 #include <algorithm>
@@ -15,36 +17,6 @@ namespace wa {
 
 constexpr size_t EnterBlockIndex = 0;
 constexpr size_t ExitBlockIndex = 1;
-
-struct BasicBlock {
-  std::vector<Instr *> m_instr{};
-  std::set<size_t> m_target{};
-};
-
-struct Cfg {
-  std::map<size_t, BasicBlock> m_blocks{};
-  static void dump(std::map<size_t, BasicBlock> const &blocks) {
-    std::cout << "Function CFG" << "\n";
-    for (auto const &[block_index, block] : blocks) {
-      std::cout << "  BB[" << block_index << "] -> ";
-      for (size_t target : block.m_target)
-        std::cout << "BB[" << target << "] ";
-      std::cout << "\n";
-      for (Instr *instr : block.m_instr) {
-        std::cout << "    " << *instr << "\n";
-      }
-    }
-  }
-  void dump() const { dump(m_blocks); }
-};
-
-class CfgBuilder : public IAnalyzer {
-  std::vector<Cfg> m_cfg{};
-
-public:
-  CfgBuilder(std::shared_ptr<AnalyzerContext> const &context) : IAnalyzer(context) {}
-  void analyze(Module &module) override;
-};
 
 namespace {
 class IWasmBlock {
@@ -99,6 +71,7 @@ private:
   void build();
   size_t append_block();
   void push_instr(size_t block_index, Instr *instr) { m_blocks[block_index].m_instr.push_back(instr); }
+  void connect_block(size_t front, size_t back) { m_blocks.at(front).m_backs.insert(back); }
   void simplify();
   bool clean_block_no_instr_one_target();
 };
@@ -118,7 +91,7 @@ void CfgBuilderImpl::build() {
     case InstrCode::BLOCK: {
       size_t const this_block_index = append_block();
       size_t const next_block_index = append_block();
-      m_blocks[m_current_block_index].m_target.insert(this_block_index);
+      connect_block(m_current_block_index, this_block_index);
 
       m_current_block_index = this_block_index;
       m_wasm_block_stack.push_back(std::make_unique<WasmBlockBlock>(next_block_index));
@@ -127,7 +100,7 @@ void CfgBuilderImpl::build() {
     case InstrCode::LOOP: {
       size_t const this_block_index = append_block();
       size_t const next_block_index = append_block();
-      m_blocks[m_current_block_index].m_target.insert(this_block_index);
+      connect_block(m_current_block_index, this_block_index);
 
       m_current_block_index = this_block_index;
       m_wasm_block_stack.push_back(std::make_unique<WasmLoopBlock>(m_current_block_index, next_block_index));
@@ -137,7 +110,7 @@ void CfgBuilderImpl::build() {
       size_t const last_block_index = m_current_block_index;
       size_t const then_block_index = append_block();
       size_t const next_block_index = append_block();
-      m_blocks[m_current_block_index].m_target.insert(then_block_index);
+      connect_block(m_current_block_index, then_block_index);
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = then_block_index;
@@ -150,8 +123,8 @@ void CfgBuilderImpl::build() {
       size_t const else_block_index = append_block();
       size_t const last_block_index = if_block->get_last_block_index();
       size_t const next_block_index = if_block->get_end_target_block_index();
-      m_blocks[m_current_block_index].m_target.insert(next_block_index); // then to next
-      m_blocks[last_block_index].m_target.insert(else_block_index);      // last to else
+      connect_block(m_current_block_index, next_block_index); // then to next
+      connect_block(last_block_index, else_block_index);      // last to else
 
       m_current_block_index = else_block_index;
       break;
@@ -159,11 +132,11 @@ void CfgBuilderImpl::build() {
     case InstrCode::END: {
       assert(!m_wasm_block_stack.empty());
       size_t const target_block_index = m_wasm_block_stack.back()->get_end_target_block_index();
-      m_blocks[m_current_block_index].m_target.insert(target_block_index);
+      connect_block(m_current_block_index, target_block_index);
       WasmIfBlock *if_block = dynamic_cast<WasmIfBlock *>(m_wasm_block_stack.back().get());
       if (if_block != nullptr) {
         size_t const last_block_index = if_block->get_last_block_index();
-        m_blocks[last_block_index].m_target.insert(target_block_index); // last to next
+        connect_block(last_block_index, target_block_index);
       }
 
       m_current_block_index = target_block_index;
@@ -174,7 +147,7 @@ void CfgBuilderImpl::build() {
     case InstrCode::RETURN: {
       size_t const this_block_index = append_block();
       size_t const target_block_index = m_wasm_block_stack.front()->get_end_target_block_index();
-      m_blocks[m_current_block_index].m_target.insert(target_block_index);
+      connect_block(m_current_block_index, target_block_index);
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = this_block_index;
@@ -184,7 +157,7 @@ void CfgBuilderImpl::build() {
       size_t const next_block_index = append_block();
       size_t const target_block_index =
           m_wasm_block_stack.at(m_wasm_block_stack.size() - 1 - instr.get_index())->get_br_target_block_index();
-      m_blocks[m_current_block_index].m_target.insert(target_block_index);
+      connect_block(m_current_block_index, target_block_index);
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = next_block_index;
@@ -194,8 +167,8 @@ void CfgBuilderImpl::build() {
       size_t const next_block_index = append_block();
       size_t const target_block_index =
           m_wasm_block_stack.at(m_wasm_block_stack.size() - 1 - instr.get_index())->get_br_target_block_index();
-      m_blocks[m_current_block_index].m_target.insert(next_block_index);
-      m_blocks[m_current_block_index].m_target.insert(target_block_index);
+      connect_block(m_current_block_index, next_block_index);
+      connect_block(m_current_block_index, target_block_index);
 
       push_instr(m_current_block_index, &instr);
       m_current_block_index = next_block_index;
@@ -215,8 +188,8 @@ void CfgBuilderImpl::build() {
 bool CfgBuilderImpl::clean_block_no_instr_one_target() {
   std::map<size_t, size_t> replaced_blocks{};
   for (auto &[block_index, block] : m_blocks) {
-    if (block.m_instr.empty() && block.m_target.size() == 1) {
-      replaced_blocks.insert_or_assign(block_index, *block.m_target.begin());
+    if (block.m_instr.empty() && block.m_backs.size() == 1) {
+      replaced_blocks.insert_or_assign(block_index, *block.m_backs.begin());
     }
   }
   bool const isChanged = !replaced_blocks.empty();
@@ -232,7 +205,7 @@ bool CfgBuilderImpl::clean_block_no_instr_one_target() {
     return target_block_index;
   });
   for (auto &[_, block] : m_blocks) {
-    block.m_target = block.m_target | replacer | std::ranges::to<std::set>();
+    block.m_backs = block.m_backs | replacer | std::ranges::to<std::set>();
   }
   for (auto &[old_block, _] : replaced_blocks) {
     m_blocks.erase(old_block);
@@ -253,12 +226,11 @@ void CfgBuilderImpl::simplify() {
 
 } // namespace
 
-void CfgBuilder::analyze(Module &module) {
+void CfgBuilder::analyze_impl(Module &module) {
   m_cfg = module.m_functions |
           std::views::filter([](std::shared_ptr<Function> const &fn) { return !fn->is_import(); }) |
           std::views::transform([&](std::shared_ptr<Function> const &fn) { return CfgBuilderImpl{fn}.get(); }) |
           std::ranges::to<std::vector>();
-  std::ranges::for_each(m_cfg, [](Cfg const &cfg) { cfg.dump(); });
 }
 
 std::shared_ptr<IAnalyzer> createCfgBuilderAnalyzer(std::shared_ptr<AnalyzerContext> context) {
