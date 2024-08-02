@@ -10,9 +10,19 @@ void IAnalyzer::analyze(Module &module) {
 }
 
 void AnalyzerManager::analyze() {
-  for (auto &[_, analyzer] : m_analyzers) {
-    analyzer->analyze(m_module);
+  for (size_t const &hash : m_active_analyzers) {
+    m_analyzers.at(hash)->analyze(m_module);
   }
+}
+
+AnalyzerManager::AnalyzerManager(AnalyzerOption const &options, Module const &module)
+    : m_module(module), m_analyzers{}, m_context{new AnalyzerContext(*this, options)} {
+  auto register_analyzer = [this](std::shared_ptr<IAnalyzer> analyzer) {
+    m_analyzers.insert_or_assign(analyzer->get_type_hash(), analyzer);
+  };
+
+#define ANALYZER(name) register_analyzer(create##name##Analyzer(m_context));
+#include "analyzer_name.inc"
 }
 
 } // namespace wa

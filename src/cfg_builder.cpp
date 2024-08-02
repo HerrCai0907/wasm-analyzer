@@ -52,6 +52,7 @@ public:
       : IWasmBlock(this_block_index, next_block_index) {}
 };
 class CfgBuilderImpl {
+  AnalyzerContext const *m_context;
   std::shared_ptr<Function> m_fn;
   size_t m_blocks_index_counter = std::max(EnterBlockIndex, ExitBlockIndex);
   std::map<size_t, BasicBlock> m_blocks{};
@@ -59,7 +60,8 @@ class CfgBuilderImpl {
   std::vector<std::unique_ptr<IWasmBlock>> m_wasm_block_stack{};
 
 public:
-  CfgBuilderImpl(std::shared_ptr<Function> const &fn) : m_fn(fn) {}
+  explicit CfgBuilderImpl(AnalyzerContext const *context, std::shared_ptr<Function> const &fn)
+      : m_context(context), m_fn(fn) {}
 
   Cfg get() {
     build();
@@ -217,11 +219,16 @@ void CfgBuilderImpl::simplify() {
   bool isChanged = true;
   size_t cnt = 0;
   while (isChanged) {
-    std::cout << "=============== simplify " << cnt++ << " ===============\n";
-    Cfg::dump(m_blocks);
+    if (m_context->m_options.is_enabled("--debug")) {
+      std::cout << "=============== simplify " << cnt++ << " ===============\n";
+      Cfg::dump(m_blocks);
+    }
+
     isChanged = clean_block_no_instr_one_target();
   }
-  std::cout << "============= simplify finish =============\n";
+  if (m_context->m_options.is_enabled("--debug")) {
+    std::cout << "============= simplify finish =============\n";
+  }
 }
 
 } // namespace
@@ -229,7 +236,8 @@ void CfgBuilderImpl::simplify() {
 void CfgBuilder::analyze_impl(Module &module) {
   m_cfg = module.m_functions |
           std::views::filter([](std::shared_ptr<Function> const &fn) { return !fn->is_import(); }) |
-          std::views::transform([&](std::shared_ptr<Function> const &fn) { return CfgBuilderImpl{fn}.get(); }) |
+          std::views::transform(
+              [this](std::shared_ptr<Function> const &fn) { return CfgBuilderImpl{get_context(), fn}.get(); }) |
           std::ranges::to<std::vector>();
 }
 
