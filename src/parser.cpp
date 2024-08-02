@@ -1,7 +1,8 @@
 #include "parser.hpp"
-#include "adt.hpp"
+#include "adt/range.hpp"
 #include "concept.hpp"
 #include "module.hpp"
+#include <__ranges/repeat_view.h>
 #include <algorithm>
 #include <array>
 #include <cstddef>
