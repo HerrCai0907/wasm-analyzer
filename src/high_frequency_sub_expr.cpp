@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <queue>
+#include <stdexcept>
 #include <vector>
 
 namespace wa {
@@ -21,8 +22,6 @@ void HighFrequencySubExpr::load_options() {
 void HighFrequencySubExpr::analyze_impl(Module &module) {
   std::shared_ptr<CfgBuilder> cfg_builder = get_context()->m_analysis_manager->get_analyzer<CfgBuilder>();
   cfg_builder->analyze(module);
-
-  size_t m_total_instr_num = 0;
 
   for (Cfg const &cfg : cfg_builder->get_cfgs()) {
     for (auto const &[_, block] : cfg.m_blocks) {
@@ -45,6 +44,9 @@ void HighFrequencySubExpr::analyze_impl(Module &module) {
 }
 
 void HighFrequencySubExpr::dump_result() {
+  if (m_total_instr_num == 0) {
+    throw std::runtime_error("empty code section");
+  }
   struct CountAndPath {
     size_t m_count;
     std::vector<InstrCode> m_path;
@@ -59,6 +61,7 @@ void HighFrequencySubExpr::dump_result() {
       break;
     }
     CountAndPath const &result = results.top();
+
     std::cout << StringOperator::join(result.m_path, ", ") << ": "
               << (static_cast<double>(result.m_count) / static_cast<double>(m_total_instr_num) * 100) << "%\n";
     results.pop();
