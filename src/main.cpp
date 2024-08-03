@@ -41,4 +41,6 @@ int main(int argc, char const *argv[]) {
   analyzer_manager.active_analyzer<HighFrequencySubExpr>();
 
   analyzer_manager.analyze();
+
+  analyzer_manager.get_analyzer<HighFrequencySubExpr>()->dump_result();
 }

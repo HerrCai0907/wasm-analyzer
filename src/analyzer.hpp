@@ -43,6 +43,7 @@ struct AnalyzerContext {
 
 class IAnalyzer {
   bool m_is_finished = false;
+  bool m_is_option_loaded = false;
   std::shared_ptr<AnalyzerContext> m_context;
 
 public:
@@ -56,6 +57,7 @@ public:
 
 protected:
   virtual void analyze_impl(Module &module) = 0;
+  virtual void load_options() {}
 
   AnalyzerContext const *get_context() const { return m_context.get(); }
   bool is_finished() const { return m_is_finished; }

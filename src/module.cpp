@@ -1,4 +1,5 @@
 #include "module.hpp"
+#include "adt/string.hpp"
 #include <cstddef>
 #include <type_traits>
 #include <variant>
@@ -421,6 +422,9 @@ std::ostream &operator<<(std::ostream &os, InstrCode code) {
 
 static std::ostream &operator<<(std::ostream &os, std::shared_ptr<FunctionType> const &type) { return os << *type; }
 static std::ostream &operator<<(std::ostream &os, Index const &index) { return os << index.m_v; }
+static std::ostream &operator<<(std::ostream &os, std::vector<Index> const &indexes) {
+  return os << StringOperator::join(indexes, ", ");
+}
 static std::ostream &operator<<(std::ostream &os, MemArg const &mem_arg) {
   return os << "align=" << mem_arg.m_align << " offset=" << mem_arg.m_offset;
 }

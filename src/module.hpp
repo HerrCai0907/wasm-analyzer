@@ -277,12 +277,15 @@ struct None {};
 
 class Instr {
   InstrCode m_code;
-  std::variant<std::nullptr_t, std::shared_ptr<FunctionType>, Index, int32_t, int64_t, float, double, MemArg> m_content;
+  std::variant<std::nullptr_t, std::shared_ptr<FunctionType>, Index, int32_t, int64_t, float, double, MemArg,
+               std::vector<Index>>
+      m_content;
 
 public:
   Instr(InstrCode code) : m_code(code), m_content(nullptr) {}
   void set_function_type(std::shared_ptr<FunctionType> const &function_type) { m_content = function_type; }
   void set_index(uint32_t index) { m_content = Index{.m_v = index}; }
+  void set_indexes(std::vector<Index> indexes) { m_content = indexes; }
   void set_value(int32_t v) { m_content = v; }
   void set_value(int64_t v) { m_content = v; }
   void set_value(float v) { m_content = v; }
@@ -291,6 +294,7 @@ public:
 
   InstrCode get_code() const { return m_code; }
   uint32_t get_index() const { return std::get<Index>(m_content).m_v; }
+  std::vector<Index> const &get_indexes() const { return std::get<std::vector<Index>>(m_content); }
 
   friend std::ostream &operator<<(std::ostream &os, Instr const &instr);
 };

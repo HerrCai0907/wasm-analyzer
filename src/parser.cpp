@@ -115,8 +115,14 @@ template <size_t N> static int64_t consume_signed_leb128(std::span<const uint8_t
   constexpr int64_t pow_2_7 = 1ULL << 7ULL;
   constexpr int64_t pow_2_N_1 = 1ULL << (N - 1ULL);
   int64_t const n = static_cast<int64_t>(static_cast<uint64_t>(consume_byte(binary)));
-  if ((n < pow_2_6) && (n < pow_2_N_1)) {
-    return n;
+  if ((n < pow_2_6)) {
+    if constexpr (N >= 7) {
+      return n;
+    } else {
+      if (n < pow_2_N_1) {
+        return n;
+      }
+    }
   }
   if ((n >= pow_2_6) && (n < pow_2_7)) {
     // n >= 0 -> if N >= 8, n >= pow_2_7 - pow_2_N_1 is true
@@ -352,11 +358,15 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
     instr.set_index(consume_leb128<uint32_t>(binary));
     break;
   case InstrCode::BR_TABLE: {
-    uint8_t const n = consume_leb128<uint32_t>(binary);
+    uint32_t const n = consume_leb128<uint32_t>(binary);
+    std::vector<Index> targets{};
     for (size_t i : Range{n}) {
       uint32_t const label_index = consume_leb128<uint32_t>(binary);
+      targets.push_back(Index{.m_v = label_index});
     }
     uint32_t const label_index = consume_leb128<uint32_t>(binary);
+    targets.push_back(Index{.m_v = label_index});
+    instr.set_indexes(targets);
     break;
   }
   case InstrCode::RETURN:
@@ -408,13 +418,15 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
     uint32_t const align = consume_leb128<uint32_t>(binary);
     uint32_t const offset = consume_leb128<uint32_t>(binary);
     instr.set_mem_arg(align, offset);
+    break;
   }
   case InstrCode::MEMORY_SIZE:
-  case InstrCode::MEMORY_GROW:
-    if (0x00 != consume_byte(binary))
-      throw std::runtime_error("invliad memory instruction");
+  case InstrCode::MEMORY_GROW: {
+    uint8_t b = consume_byte(binary);
+    if (0x00 != b)
+      throw std::runtime_error(std::format("invalid memory instruction {}", std::to_string(static_cast<uint32_t>(b))));
     break;
-
+  }
   case InstrCode::I32CONST:
     instr.set_value(consume_leb128<int32_t>(binary));
     break;

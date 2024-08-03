@@ -3,6 +3,10 @@
 namespace wa {
 
 void IAnalyzer::analyze(Module &module) {
+  if (!m_is_option_loaded) {
+    load_options();
+    m_is_option_loaded = true;
+  }
   if (!m_is_finished) {
     analyze_impl(module);
     m_is_finished = true;

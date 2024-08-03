@@ -1,7 +1,6 @@
 #include "cfg_builder.hpp"
 #include "analyzer.hpp"
 #include "cfg.hpp"
-#include "error.hpp"
 #include "module.hpp"
 #include <algorithm>
 #include <cassert>
@@ -74,6 +73,9 @@ private:
   size_t append_block();
   void push_instr(size_t block_index, Instr *instr) { m_blocks[block_index].m_instr.push_back(instr); }
   void connect_block(size_t front, size_t back) { m_blocks.at(front).m_backs.insert(back); }
+  size_t get_br_target_block(size_t label_index) const {
+    return m_wasm_block_stack.at(m_wasm_block_stack.size() - 1 - label_index)->get_br_target_block_index();
+  }
   void simplify();
   bool clean_block_no_instr_one_target();
 };
@@ -157,8 +159,7 @@ void CfgBuilderImpl::build() {
     }
     case InstrCode::BR: {
       size_t const next_block_index = append_block();
-      size_t const target_block_index =
-          m_wasm_block_stack.at(m_wasm_block_stack.size() - 1 - instr.get_index())->get_br_target_block_index();
+      size_t const target_block_index = get_br_target_block(instr.get_index());
       connect_block(m_current_block_index, target_block_index);
 
       push_instr(m_current_block_index, &instr);
@@ -167,8 +168,7 @@ void CfgBuilderImpl::build() {
     }
     case InstrCode::BR_IF: {
       size_t const next_block_index = append_block();
-      size_t const target_block_index =
-          m_wasm_block_stack.at(m_wasm_block_stack.size() - 1 - instr.get_index())->get_br_target_block_index();
+      size_t const target_block_index = get_br_target_block(instr.get_index());
       connect_block(m_current_block_index, next_block_index);
       connect_block(m_current_block_index, target_block_index);
 
@@ -177,7 +177,13 @@ void CfgBuilderImpl::build() {
       break;
     }
     case InstrCode::BR_TABLE: {
-      throw Todo{"br_table"};
+      size_t const next_block_index = append_block();
+      for (Index const &index : instr.get_indexes()) {
+        size_t const target_block_index = get_br_target_block(index.m_v);
+        connect_block(m_current_block_index, target_block_index);
+      }
+      push_instr(m_current_block_index, &instr);
+      m_current_block_index = next_block_index;
     }
     default: {
       push_instr(m_current_block_index, &instr);
