@@ -1,46 +1,24 @@
 
 #include "analyzer.hpp"
+#include "args.hpp"
 #include "high_frequency_sub_expr.hpp"
 #include "parser.hpp"
-#include <exception>
-#include <iostream>
 
 using namespace wa;
 
 int main(int argc, char const *argv[]) {
-  if (argc < 2) {
-    std::cerr << "invalid arguments\n";
-    std::terminate();
-  }
+  std::string wasm_file{};
+  Args::get_arg_parser().add_argument("wasm file").store_into(wasm_file).required();
 
-  Parser parser{argv[1]};
+  Args::get_arg_parser().parse_args(argc, argv);
 
-  AnalyzerOption options{};
-  const char *tmp = nullptr;
-  for (int i = 2; i < argc; i++) {
-    if (argv[i][0] == '-') {
-      if (tmp != nullptr) {
-        options.set(tmp, true);
-      }
-      tmp = argv[i];
-    } else {
-      if (tmp != nullptr) {
-        options.set(tmp, argv[i]);
-      } else {
-        std::cerr << "invalid arguments\n";
-        std::terminate();
-      }
-    }
-  }
-  if (tmp != nullptr) {
-    options.set(tmp, true);
-  }
+  Parser parser{wasm_file.c_str()};
 
-  AnalyzerManager analyzer_manager{options, parser.parse()};
-
-  analyzer_manager.active_analyzer<HighFrequencySubExpr>();
+  AnalyzerManager analyzer_manager{parser.parse()};
 
   analyzer_manager.analyze();
 
-  analyzer_manager.get_analyzer<HighFrequencySubExpr>()->dump_result();
+  if (AnalyzerManager::is_HighFrequencySubExpr_active()) {
+    analyzer_manager.get_analyzer<HighFrequencySubExpr>()->dump_result();
+  }
 }

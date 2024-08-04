@@ -1,5 +1,6 @@
 #include "cfg_builder.hpp"
 #include "analyzer.hpp"
+#include "args.hpp"
 #include "cfg.hpp"
 #include "module.hpp"
 #include <algorithm>
@@ -13,6 +14,8 @@
 #include <vector>
 
 namespace wa {
+
+static const Arg<bool> debug_mode{"--debug", false};
 
 constexpr size_t EnterBlockIndex = 0;
 constexpr size_t ExitBlockIndex = 1;
@@ -225,14 +228,14 @@ void CfgBuilderImpl::simplify() {
   bool isChanged = true;
   size_t cnt = 0;
   while (isChanged) {
-    if (m_context->m_options.is_enabled("--debug")) {
+    if (debug_mode) {
       std::cout << "=============== simplify " << cnt++ << " ===============\n";
       Cfg::dump(m_blocks);
     }
 
     isChanged = clean_block_no_instr_one_target();
   }
-  if (m_context->m_options.is_enabled("--debug")) {
+  if (debug_mode) {
     std::cout << "============= simplify finish =============\n";
   }
 }
