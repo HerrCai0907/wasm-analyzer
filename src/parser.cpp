@@ -1,11 +1,13 @@
 #include "parser.hpp"
-#include "adt.hpp"
+#include "adt/range.hpp"
 #include "concept.hpp"
 #include "module.hpp"
+#include <__ranges/repeat_view.h>
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <fstream>
 #include <ios>
 #include <iostream>
@@ -113,8 +115,14 @@ template <size_t N> static int64_t consume_signed_leb128(std::span<const uint8_t
   constexpr int64_t pow_2_7 = 1ULL << 7ULL;
   constexpr int64_t pow_2_N_1 = 1ULL << (N - 1ULL);
   int64_t const n = static_cast<int64_t>(static_cast<uint64_t>(consume_byte(binary)));
-  if ((n < pow_2_6) && (n < pow_2_N_1)) {
-    return n;
+  if ((n < pow_2_6)) {
+    if constexpr (N >= 7) {
+      return n;
+    } else {
+      if (n < pow_2_N_1) {
+        return n;
+      }
+    }
   }
   if ((n >= pow_2_6) && (n < pow_2_7)) {
     // n >= 0 -> if N >= 8, n >= pow_2_7 - pow_2_N_1 is true
@@ -261,6 +269,7 @@ static void parse_import_section(Module &m, std::span<const uint8_t> binary) {
       uint32_t const type_index = consume_leb128<uint32_t>(binary);
       m.m_functions.push_back(std::make_shared<Function>());
       m.m_functions.back()->set_type(m.m_function_types.at(type_index));
+      m.m_functions.back()->set_is_import();
       break;
     }
     case 1: {
@@ -326,15 +335,55 @@ static std::shared_ptr<FunctionType> consume_block_type(Module const &m, std::sp
 }
 
 static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
-  Instr instr{static_cast<InstrCode>(consume_byte(binary))};
+  uint16_t code = static_cast<uint16_t>(consume_byte(binary));
+  if (code == SATURATING_TRUNCATION_PREFIX) {
+    uint32_t const postfix = consume_leb128<uint32_t>(binary);
+    code = (code << 8U) + postfix;
+  }
+  Instr instr{static_cast<InstrCode>(code)};
   switch (instr.get_code()) {
+  case InstrCode::UNREACHABLE:
+  case InstrCode::NOP:
+    break;
   case InstrCode::BLOCK:
   case InstrCode::LOOP:
   case InstrCode::IF:
     instr.set_function_type(consume_block_type(m, binary));
     break;
+  case InstrCode::ELSE:
+  case InstrCode::END:
+    break;
   case InstrCode::BR:
   case InstrCode::BR_IF:
+    instr.set_index(consume_leb128<uint32_t>(binary));
+    break;
+  case InstrCode::BR_TABLE: {
+    uint32_t const n = consume_leb128<uint32_t>(binary);
+    std::vector<Index> targets{};
+    for (size_t i : Range{n}) {
+      uint32_t const label_index = consume_leb128<uint32_t>(binary);
+      targets.push_back(Index{.m_v = label_index});
+    }
+    uint32_t const label_index = consume_leb128<uint32_t>(binary);
+    targets.push_back(Index{.m_v = label_index});
+    instr.set_indexes(targets);
+    break;
+  }
+  case InstrCode::RETURN:
+    break;
+  case InstrCode::CALL:
+    instr.set_index(consume_leb128<uint32_t>(binary));
+    break;
+  case InstrCode::CALL_INDIRECT: {
+    uint32_t const type_index = consume_leb128<uint32_t>(binary);
+    uint32_t const table_index = consume_leb128<uint32_t>(binary);
+    instr.set_function_type(m.m_function_types.at(type_index));
+    break;
+  }
+  case InstrCode::DROP:
+  case InstrCode::SELECT:
+    break;
+
   case InstrCode::LOCAL_GET:
   case InstrCode::LOCAL_SET:
   case InstrCode::LOCAL_TEE:
@@ -342,6 +391,42 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
   case InstrCode::GLOBAL_SET:
     instr.set_index(consume_leb128<uint32_t>(binary));
     break;
+
+  case InstrCode::I32_LOAD:
+  case InstrCode::I64_LOAD:
+  case InstrCode::F32_LOAD:
+  case InstrCode::F64_LOAD:
+  case InstrCode::I32_LOAD8_S:
+  case InstrCode::I32_LOAD8_U:
+  case InstrCode::I32_LOAD16_S:
+  case InstrCode::I32_LOAD16_U:
+  case InstrCode::I64_LOAD8_S:
+  case InstrCode::I64_LOAD8_U:
+  case InstrCode::I64_LOAD16_S:
+  case InstrCode::I64_LOAD16_U:
+  case InstrCode::I64_LOAD32_S:
+  case InstrCode::I64_LOAD32_U:
+  case InstrCode::I32_STORE:
+  case InstrCode::I64_STORE:
+  case InstrCode::F32_STORE:
+  case InstrCode::F64_STORE:
+  case InstrCode::I32_STORE8:
+  case InstrCode::I32_STORE16:
+  case InstrCode::I64_STORE8:
+  case InstrCode::I64_STORE16:
+  case InstrCode::I64_STORE32: {
+    uint32_t const align = consume_leb128<uint32_t>(binary);
+    uint32_t const offset = consume_leb128<uint32_t>(binary);
+    instr.set_mem_arg(align, offset);
+    break;
+  }
+  case InstrCode::MEMORY_SIZE:
+  case InstrCode::MEMORY_GROW: {
+    uint8_t b = consume_byte(binary);
+    if (0x00 != b)
+      throw std::runtime_error(std::format("invalid memory instruction {}", std::to_string(static_cast<uint32_t>(b))));
+    break;
+  }
   case InstrCode::I32CONST:
     instr.set_value(consume_leb128<int32_t>(binary));
     break;
@@ -362,43 +447,7 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
     instr.set_value(std::bit_cast<double>(v));
     break;
   }
-  case InstrCode::UNREACHABLE:
-  case InstrCode::NOP:
-  case InstrCode::ELSE:
-  case InstrCode::END:
-  case InstrCode::BR_TABLE:
-  case InstrCode::RETURN:
-  case InstrCode::CALL:
-  case InstrCode::CALL_INDIRECT:
-  case InstrCode::RETURN_CALL:
-  case InstrCode::RETURN_CALL_INDIRECT:
-  case InstrCode::DROP:
-  case InstrCode::SELECT:
-  case InstrCode::I32LOAD:
-  case InstrCode::I64LOAD:
-  case InstrCode::F32LOAD:
-  case InstrCode::F64LOAD:
-  case InstrCode::I32LOAD8_S:
-  case InstrCode::I32LOAD8_U:
-  case InstrCode::I32LOAD16_S:
-  case InstrCode::I32LOAD16_U:
-  case InstrCode::I64LOAD8_S:
-  case InstrCode::I64LOAD8_U:
-  case InstrCode::I64LOAD16_S:
-  case InstrCode::I64LOAD16_U:
-  case InstrCode::I64LOAD32_S:
-  case InstrCode::I64LOAD32_U:
-  case InstrCode::I32STORE:
-  case InstrCode::I64STORE:
-  case InstrCode::F32STORE:
-  case InstrCode::F64STORE:
-  case InstrCode::I32STORE8:
-  case InstrCode::I32STORE16:
-  case InstrCode::I64STORE8:
-  case InstrCode::I64STORE16:
-  case InstrCode::I64STORE32:
-  case InstrCode::MEMORY_SIZE:
-  case InstrCode::MEMORY_GROW:
+
   case InstrCode::I32EQZ:
   case InstrCode::I32EQ:
   case InstrCode::I32NE:
@@ -527,15 +576,22 @@ static Instr consume_instr(Module const &m, std::span<const uint8_t> &binary) {
   case InstrCode::I64EXTEND8_S:
   case InstrCode::I64EXTEND16_S:
   case InstrCode::I64EXTEND32_S:
+  case InstrCode::I32_TRUNC_SAT_F32_S:
+  case InstrCode::I32_TRUNC_SAT_F32_U:
+  case InstrCode::I32_TRUNC_SAT_F64_S:
+  case InstrCode::I32_TRUNC_SAT_F64_U:
+  case InstrCode::I64_TRUNC_SAT_F32_S:
+  case InstrCode::I64_TRUNC_SAT_F32_U:
+  case InstrCode::I64_TRUNC_SAT_F64_S:
+  case InstrCode::I64_TRUNC_SAT_F64_U:
     break;
   default:
-    throw std::runtime_error("unknown instruction code " + std::to_string(static_cast<uint32_t>(instr.get_code())));
+    throw std::runtime_error("unknown instruction");
   }
-  std::cout << (int)instr.get_code() << "\n";
   return instr;
 }
 
-static void consume_code(Module const &m, std::span<const uint8_t> binary) {
+static std::vector<Instr> consume_code(Module const &m, std::span<const uint8_t> binary) {
   size_t const local_size = static_cast<size_t>(consume_leb128<uint32_t>(binary));
   std::vector<WasmType> locals{};
   for (size_t i : Range{local_size}) {
@@ -544,12 +600,14 @@ static void consume_code(Module const &m, std::span<const uint8_t> binary) {
     for (size_t _ : Range{count})
       locals.push_back(type);
   }
-  std::vector<Instr> instrs{};
+  std::vector<Instr> instr{};
   while (binary.size() > 0)
-    instrs.push_back(consume_instr(m, binary));
+    instr.push_back(consume_instr(m, binary));
 
-  if (instrs.empty() || instrs.back().get_code() != InstrCode::END)
+  if (instr.empty() || instr.back().get_code() != InstrCode::END)
     throw std::runtime_error("code does not end with OP::END");
+
+  return instr;
 }
 
 static void parse_code_section(Module &m, std::span<const uint8_t> binary) {
@@ -558,12 +616,13 @@ static void parse_code_section(Module &m, std::span<const uint8_t> binary) {
       std::count_if(m.m_functions.begin(), m.m_functions.end(),
                     [](std::shared_ptr<Function> const &func) { return func->is_import(); });
   if (importFuncNumber + n != m.m_functions.size())
-    throw std::runtime_error("not matched code count");
+    throw std::runtime_error(std::format("not matched code count, importFuncNumber={}, n={}, m_functions.size={}",
+                                         importFuncNumber, n, m.m_functions.size()));
   for (size_t i : Range{n}) {
     uint32_t const size = consume_leb128<uint32_t>(binary);
     std::span<const uint8_t> code_binary = binary.subspan(0, size);
 
-    consume_code(m, code_binary);
+    m.m_functions[importFuncNumber + i]->set_instr(consume_code(m, code_binary));
 
     binary = binary.subspan(size);
   }
