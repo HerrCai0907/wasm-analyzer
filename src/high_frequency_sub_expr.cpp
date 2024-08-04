@@ -2,6 +2,7 @@
 #include "adt/range.hpp"
 #include "adt/string.hpp"
 #include "analyzer.hpp"
+#include "args.hpp"
 #include "cfg.hpp"
 #include "cfg_builder.hpp"
 #include "module.hpp"
@@ -14,10 +15,8 @@
 
 namespace wa {
 
-void HighFrequencySubExpr::load_options() {
-  m_depth = get_context()->m_options.get<size_t>("--high-frequency-sub-expr-depth").value_or(16u);
-  m_statistic_num = get_context()->m_options.get<size_t>("--high-frequency-sub-expr-num").value_or(128u);
-}
+static const Arg<size_t> depth{"--HighFrequencySubExpr.depth", 16u};
+static const Arg<size_t> statistic_num{"--HighFrequencySubExpr.num", 128u};
 
 void HighFrequencySubExpr::analyze_impl(Module &module) {
   std::shared_ptr<CfgBuilder> cfg_builder = get_context()->m_analysis_manager->get_analyzer<CfgBuilder>();
@@ -29,7 +28,7 @@ void HighFrequencySubExpr::analyze_impl(Module &module) {
       std::vector<InstrCode> codes{};
       for (Instr const *instr : block.m_instr) {
         codes.push_back(instr->get_code());
-        for (size_t i = codes.size() > m_depth ? (codes.size() - m_depth) : 0U; i < codes.size(); i++) {
+        for (size_t i = codes.size() > depth ? (codes.size() - depth) : 0U; i < codes.size(); i++) {
           m_trie.update(std::span<InstrCode>{&codes[i], codes.size() - i}, [](std::optional<size_t> &v) -> void {
             if (v.has_value()) {
               v.value()++;
@@ -56,7 +55,7 @@ void HighFrequencySubExpr::dump_result() {
   m_trie.for_each([&results](std::vector<InstrCode> path, size_t const &count) {
     results.push(CountAndPath{.m_count = count, .m_path = std::move(path)});
   });
-  for (size_t i : Range(m_statistic_num)) {
+  for (size_t i : Range(statistic_num)) {
     if (results.empty()) {
       break;
     }
