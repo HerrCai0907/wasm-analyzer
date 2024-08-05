@@ -8,11 +8,11 @@
 
 namespace wa {
 
-class CfgBuilder : public IAnalyzer {
+class BasicBlockBuilder : public IAnalyzer {
   std::vector<Cfg> m_cfg{};
 
 public:
-  explicit CfgBuilder(std::shared_ptr<AnalyzerContext> const &context) : IAnalyzer(context) {}
+  explicit BasicBlockBuilder(std::shared_ptr<AnalyzerContext> const &context) : IAnalyzer(context) {}
   void analyze_impl(Module &module) override;
 
   std::vector<Cfg> const &get_cfgs() const { return m_cfg; };

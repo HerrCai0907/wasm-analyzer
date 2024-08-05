@@ -3,8 +3,8 @@
 #endif
 
 ANALYZER(Printer)
-ANALYZER(CfgBuilder)
-ANALYZER(ExtendCfgBuilder)
+ANALYZER(BasicBlockBuilder)
+ANALYZER(ExtendBasicBlockBuilder)
 ANALYZER(HighFrequencySubExpr)
 
 #undef ANALYZER
