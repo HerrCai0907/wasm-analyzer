@@ -3,8 +3,8 @@
 #include "adt/string.hpp"
 #include "analyzer.hpp"
 #include "args.hpp"
+#include "basic_block_builder.hpp"
 #include "cfg.hpp"
-#include "cfg_builder.hpp"
 #include "module.hpp"
 #include <iostream>
 #include <memory>
@@ -19,7 +19,7 @@ static const Arg<size_t> depth{"--HighFrequencySubExpr.depth", 16u};
 static const Arg<size_t> statistic_num{"--HighFrequencySubExpr.num", 128u};
 
 void HighFrequencySubExpr::analyze_impl(Module &module) {
-  std::shared_ptr<CfgBuilder> cfg_builder = get_context()->m_analysis_manager->get_analyzer<CfgBuilder>();
+  std::shared_ptr<BasicBlockBuilder> cfg_builder = get_context()->m_analysis_manager->get_analyzer<BasicBlockBuilder>();
   cfg_builder->analyze(module);
 
   for (Cfg const &cfg : cfg_builder->get_cfgs()) {

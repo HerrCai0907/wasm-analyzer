@@ -1,7 +1,7 @@
-#include "cfg_builder.hpp"
+#include "basic_block_builder.hpp"
 #include "analyzer.hpp"
-#include "args.hpp"
 #include "cfg.hpp"
+#include "debug.hpp"
 #include "module.hpp"
 #include <algorithm>
 #include <cassert>
@@ -14,8 +14,6 @@
 #include <vector>
 
 namespace wa {
-
-static const Arg<bool> debug_mode{"--debug", false};
 
 constexpr size_t EnterBlockIndex = 0;
 constexpr size_t ExitBlockIndex = 1;
@@ -53,7 +51,7 @@ public:
   explicit WasmLoopBlock(size_t this_block_index, size_t next_block_index)
       : IWasmBlock(this_block_index, next_block_index) {}
 };
-class CfgBuilderImpl {
+class BasicBlockBuilderImpl {
   AnalyzerContext const *m_context;
   std::shared_ptr<Function> m_fn;
   size_t m_blocks_index_counter = std::max(EnterBlockIndex, ExitBlockIndex);
@@ -62,7 +60,7 @@ class CfgBuilderImpl {
   std::vector<std::unique_ptr<IWasmBlock>> m_wasm_block_stack{};
 
 public:
-  explicit CfgBuilderImpl(AnalyzerContext const *context, std::shared_ptr<Function> const &fn)
+  explicit BasicBlockBuilderImpl(AnalyzerContext const *context, std::shared_ptr<Function> const &fn)
       : m_context(context), m_fn(fn) {}
 
   Cfg get() {
@@ -82,12 +80,12 @@ private:
   void simplify();
   bool clean_block_no_instr_one_target();
 };
-size_t CfgBuilderImpl::append_block() {
+size_t BasicBlockBuilderImpl::append_block() {
   m_blocks_index_counter++;
   m_blocks.insert_or_assign(m_blocks_index_counter, BasicBlock{});
   return m_blocks_index_counter;
 }
-void CfgBuilderImpl::build() {
+void BasicBlockBuilderImpl::build() {
   {
     m_blocks.insert_or_assign(EnterBlockIndex, BasicBlock{});
     m_blocks.insert_or_assign(ExitBlockIndex, BasicBlock{});
@@ -196,7 +194,7 @@ void CfgBuilderImpl::build() {
   }
   assert(m_wasm_block_stack.empty());
 }
-bool CfgBuilderImpl::clean_block_no_instr_one_target() {
+bool BasicBlockBuilderImpl::clean_block_no_instr_one_target() {
   std::map<size_t, size_t> replaced_blocks{};
   for (auto &[block_index, block] : m_blocks) {
     if (block.m_instr.empty() && block.m_backs.size() == 1) {
@@ -224,34 +222,34 @@ bool CfgBuilderImpl::clean_block_no_instr_one_target() {
   return isChanged;
 }
 
-void CfgBuilderImpl::simplify() {
+void BasicBlockBuilderImpl::simplify() {
   bool isChanged = true;
   size_t cnt = 0;
   while (isChanged) {
-    if (debug_mode) {
+    if (Debug::is_debug_mode()) {
       std::cout << "=============== simplify " << cnt++ << " ===============\n";
       Cfg::dump(m_blocks);
     }
 
     isChanged = clean_block_no_instr_one_target();
   }
-  if (debug_mode) {
+  if (Debug::is_debug_mode()) {
     std::cout << "============= simplify finish =============\n";
   }
 }
 
 } // namespace
 
-void CfgBuilder::analyze_impl(Module &module) {
+void BasicBlockBuilder::analyze_impl(Module &module) {
   m_cfg = module.m_functions |
           std::views::filter([](std::shared_ptr<Function> const &fn) { return !fn->is_import(); }) |
           std::views::transform(
-              [this](std::shared_ptr<Function> const &fn) { return CfgBuilderImpl{get_context(), fn}.get(); }) |
+              [this](std::shared_ptr<Function> const &fn) { return BasicBlockBuilderImpl{get_context(), fn}.get(); }) |
           std::ranges::to<std::vector>();
 }
 
-std::shared_ptr<IAnalyzer> createCfgBuilderAnalyzer(std::shared_ptr<AnalyzerContext> context) {
-  return std::make_shared<CfgBuilder>(context);
+std::shared_ptr<IAnalyzer> createBasicBlockBuilderAnalyzer(std::shared_ptr<AnalyzerContext> context) {
+  return std::make_shared<BasicBlockBuilder>(context);
 }
 
 } // namespace wa
