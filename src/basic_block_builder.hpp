@@ -13,9 +13,14 @@ class BasicBlockBuilder : public IAnalyzer {
 
 public:
   explicit BasicBlockBuilder(std::shared_ptr<AnalyzerContext> const &context) : IAnalyzer(context) {}
-  void analyze_impl(Module &module) override;
-
   std::vector<Cfg> const &get_cfgs() const { return m_cfg; };
+
+  BlockRange get_all_blocks() const {
+    return BlockRange{.m_begin = BlockIterator::create_begin(m_cfg), .m_end = BlockIterator::create_end(m_cfg)};
+  }
+
+private:
+  void analyze_impl(Module &module) override;
 };
 
 } // namespace wa

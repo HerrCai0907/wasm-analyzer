@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+
 namespace wa {
 
 class Range {
@@ -8,7 +9,8 @@ class Range {
   std::size_t m_end;
 
 public:
-  Range(std::size_t end) : m_begin(0), m_end(end) {}
+  explicit Range(std::size_t begin, std::size_t end) : m_begin(begin), m_end(end) {}
+  explicit Range(std::size_t end) : Range(0, end) {}
 
   class RangeIterator {
     std::size_t m_cnt;
