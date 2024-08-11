@@ -34,4 +34,24 @@ void ExtendBasicBlock::dump() const {
   std::cout << "\n";
 };
 
+BlockIterator &BlockIterator::operator++() {
+  ++m_block_it;
+  if (m_block_it != m_cfg_it->m_blocks.end()) {
+    return *this;
+  }
+  while (true) {
+    ++m_cfg_it;
+    if (m_cfg_it == m_cfg_end) {
+      m_block_it = InnerIt{};
+      return *this;
+    }
+    if (m_cfg_it->m_blocks.empty()) {
+      continue;
+    }
+    break;
+  }
+  m_block_it = m_cfg_it->m_blocks.begin();
+  return *this;
+}
+
 } // namespace wa

@@ -19,24 +19,22 @@ static const Arg<size_t> depth{"--HighFrequencySubExpr.depth", 16u};
 static const Arg<size_t> statistic_num{"--HighFrequencySubExpr.num", 128u};
 
 void HighFrequencySubExpr::analyze_impl(Module &module) {
-  std::shared_ptr<BasicBlockBuilder> cfg_builder = get_context()->m_analysis_manager->get_analyzer<BasicBlockBuilder>();
+  auto cfg_builder = get_context()->m_analysis_manager->get_analyzer<BasicBlockBuilder>();
   cfg_builder->analyze(module);
 
-  for (Cfg const &cfg : cfg_builder->get_cfgs()) {
-    for (auto const &[_, block] : cfg.m_blocks) {
-      m_total_instr_num += block.m_instr.size();
-      std::vector<InstrCode> codes{};
-      for (Instr const *instr : block.m_instr) {
-        codes.push_back(instr->get_code());
-        for (size_t i = codes.size() > depth ? (codes.size() - depth) : 0U; i < codes.size(); i++) {
-          m_trie.update(std::span<InstrCode>{&codes[i], codes.size() - i}, [](std::optional<size_t> &v) -> void {
-            if (v.has_value()) {
-              v.value()++;
-            } else {
-              v = 1;
-            }
-          });
-        }
+  for (BasicBlock const &block : cfg_builder->get_all_blocks()) {
+    m_total_instr_num += block.m_instr.size();
+    std::vector<InstrCode> codes{};
+    for (Instr const *instr : block.m_instr) {
+      codes.push_back(instr->get_code());
+      for (size_t i = codes.size() > depth ? (codes.size() - depth) : 0U; i < codes.size(); i++) {
+        m_trie.update(std::span<InstrCode>{&codes[i], codes.size() - i}, [](std::optional<size_t> &v) -> void {
+          if (v.has_value()) {
+            v.value()++;
+          } else {
+            v = 1;
+          }
+        });
       }
     }
   }

@@ -21,4 +21,4 @@ cmake --build build
   - [ ] Dominate
 - [ ] Local Optimization
   - [ ] value numbering
-  - [ ] tree-height balancing
+  - [x] tree-height balancing

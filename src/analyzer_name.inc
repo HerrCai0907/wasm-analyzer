@@ -6,5 +6,6 @@ ANALYZER(Printer)
 ANALYZER(BasicBlockBuilder)
 ANALYZER(ExtendBasicBlockBuilder)
 ANALYZER(HighFrequencySubExpr)
+ANALYZER(TreeHeightBalancing)
 
 #undef ANALYZER
