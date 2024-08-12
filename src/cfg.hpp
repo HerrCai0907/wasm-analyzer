@@ -1,6 +1,6 @@
 #pragma once
 
-#include "module.hpp"
+#include "instruction.hpp"
 #include <cstddef>
 #include <map>
 #include <set>
@@ -17,9 +17,12 @@ struct BasicBlock {
 
 struct Cfg {
   std::map<size_t, BasicBlock> m_blocks{};
+  mutable std::map<size_t, std::set<size_t>> m_pred_map_cache{};
 
   static void dump(std::map<size_t, BasicBlock> const &blocks);
   void dump() const { dump(m_blocks); }
+
+  std::map<size_t, std::set<size_t>> const &get_pred_map() const;
 };
 
 class BlockIterator {

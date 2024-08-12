@@ -4,6 +4,18 @@
 
 namespace wa {
 
+std::map<size_t, std::set<size_t>> const &Cfg::get_pred_map() const {
+  if (!m_pred_map_cache.empty())
+    return m_pred_map_cache;
+  for (auto const &[block_index, block] : m_blocks) {
+    m_pred_map_cache[block_index]; // make sure every block exist in map
+    for (size_t back : block.m_backs) {
+      m_pred_map_cache[back].insert(block_index);
+    }
+  }
+  return m_pred_map_cache;
+}
+
 void Cfg::dump(std::map<size_t, BasicBlock> const &blocks) {
   std::cout << "Function CFG" << "\n";
   for (auto const &[block_index, block] : blocks) {

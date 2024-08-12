@@ -8,6 +8,9 @@
 
 namespace wa {
 
+constexpr size_t EnterBlockIndex = 0;
+constexpr size_t ExitBlockIndex = 1;
+
 class BasicBlockBuilder : public IAnalyzer {
   std::vector<Cfg> m_cfg{};
 
