@@ -1,6 +1,6 @@
 #pragma once
 
-#include <array>
+#include <span>
 
 namespace wa {
 
@@ -9,6 +9,6 @@ struct ThirdPartyDeps {
   const char *m_link;
 };
 
-extern std::array<ThirdPartyDeps, 1> third_party;
+extern std::span<ThirdPartyDeps> third_party;
 
 } // namespace wa

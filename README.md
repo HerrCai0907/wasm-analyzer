@@ -22,3 +22,5 @@ cmake --build build
 - [ ] Local Optimization
   - [ ] value numbering
   - [x] tree-height balancing
+- [ ] Data Flow Analyzer
+  - [x] dominator

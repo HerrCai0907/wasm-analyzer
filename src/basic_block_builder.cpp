@@ -15,9 +15,6 @@
 
 namespace wa {
 
-constexpr size_t EnterBlockIndex = 0;
-constexpr size_t ExitBlockIndex = 1;
-
 namespace {
 class IWasmBlock {
   size_t m_br_target_block_index;
